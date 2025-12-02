@@ -1,184 +1,173 @@
-using FishNet;
+﻿using FishNet;
 using FishNet.Connection;
 using FishNet.Managing;
 using FishNet.Object;
 using FishNet.Transporting;
-using System;
+using System.Collections;
 using UnityEngine;
 
 public class GamePlayHandler : MonoBehaviour
 {
-    public NetworkObject Playerprefab;
-    public Transform[] spawnPoint;
-   
-
-    [SerializeField] NetworkManager _networkManager;
-    private LocalConnectionState _serverState = LocalConnectionState.Stopped;
-    private LocalConnectionState _clientState = LocalConnectionState.Stopped;
-
-
+    [Header("References")]
+    public NetworkManager networkManager;
+    public NetworkObject playerPrefab;
+    public Transform[] spawnPoints;
 
     private void Awake()
     {
-        _networkManager.ServerManager.OnServerConnectionState += HandleServerState;
+        if (networkManager == null)
+            networkManager = InstanceFinder.NetworkManager;
 
-        //_networkManager.ServerManager.OnRemoteConnectionState += HandleClientState;
-         _networkManager.ClientManager.OnClientConnectionState += HandleClientState;
+        // Server events
+        networkManager.ServerManager.OnServerConnectionState += OnServerState;
+        networkManager.ServerManager.OnRemoteConnectionState += OnRemoteState;
 
-       
-
-
-    }
-
-    
-
-    private void HandleClientState(NetworkConnection connection, RemoteConnectionStateArgs args)
-    {
-        if (args.ConnectionState == RemoteConnectionState.Started)
-        {
-            Debug.Log("REMOTE CLIENT CONNECTED: " + connection.ClientId);
-            SpawnPlayer(connection);  // conn is VALID here
-        }
+        // Local client events (host included)
+       // networkManager.ClientManager.OnClientConnectionState += OnLocalClientState;
     }
 
     private void OnDestroy()
     {
-        _networkManager.ServerManager.OnServerConnectionState -= HandleServerState;
-        //_networkManager.ServerManager.OnRemoteConnectionState -= HandleClientState;
-        _networkManager.ClientManager.OnClientConnectionState -= HandleClientState;
-    }
+        // Server events
+        networkManager.ServerManager.OnServerConnectionState -= OnServerState;
+        networkManager.ServerManager.OnRemoteConnectionState -= OnRemoteState;
 
-    private void HandleClientState(ClientConnectionStateArgs args)
-    {
-        if (args.ConnectionState == LocalConnectionState.Started)
-        {
-            Debug.Log("Client connected: ");
-
-            SpawnPlayer(null);
-        }
-        else if (args.ConnectionState == LocalConnectionState.Stopped)
-        {
-            Debug.Log("Client DISconnected: ");
-        }
-    }
-
-    private void HandleServerState(ServerConnectionStateArgs args)
-    {
-        if (args.ConnectionState == LocalConnectionState.Started)
-        {
-            Debug.Log("Server started successfully!");
-            SpawnPlayer(null);
-        }
-        else if (args.ConnectionState == LocalConnectionState.Stopped)
-        {
-            Debug.Log("Server stopped.");
-        }
+        // Local client events (host included)
+        //networkManager.ClientManager.OnClientConnectionState -= OnLocalClientState;
     }
 
     private void Start()
     {
-        if (SignInHandler.Instance != null)
+        if (SignInHandler.Instance == null)
         {
-            if(SignInHandler.Instance.selectedPlayer == SignInHandler.PlayerType.Instructor)
-            {
-                OnClick_Server();
-            }
-
-            else if (SignInHandler.Instance.selectedPlayer == SignInHandler.PlayerType.Trainee)
-            {
-                OnClick_Client();
-            }
-
-            else
-            {
-                Debug.Log(" PlayerType not selected");
-            }
-
+            Debug.LogError("SignInHandler not found!");
+            return;
         }
-        else
+
+        switch (SignInHandler.Instance.selectedPlayer)
         {
-            Debug.Log(" SignInHandler Instance not found");
+            case SignInHandler.PlayerType.Instructor:
+                StartHost();
+                break;
+
+            case SignInHandler.PlayerType.Trainee:
+                StartClient();
+                break;
+
+            default:
+                Debug.Log("Player type not selected.");
+                break;
         }
     }
 
-    private void OnEnable()
+    // -----------------------------
+    // CONNECTION START METHODS
+    // -----------------------------
+
+    public void StartHost()
     {
-       
-       
-       
+        Debug.Log("Starting Host (Server + Client)...");
+        networkManager.ServerManager.StartConnection();
+        networkManager.ClientManager.StartConnection();
     }
 
-    
-
-    
-
-    
-
-
-    public void OnClick_Server()
+    public void StartClient()
     {
+        Debug.Log("Starting Client...");
+        networkManager.ClientManager.StartConnection();
+    }
 
-        Debug.Log(" OnclickServer");
-        if (_networkManager == null)
+    // -----------------------------
+    // SERVER CALLBACKS
+    // -----------------------------
+
+    private void OnServerState(ServerConnectionStateArgs args)
+    {
+        if (args.ConnectionState != LocalConnectionState.Started)
             return;
-        Debug.Log(" OnclickServer1");
 
-        if (_serverState != LocalConnectionState.Stopped)
-            _networkManager.ServerManager.StopConnection(true);
-        else
-        { 
-            _networkManager.ServerManager.StartConnection();
-           
-        }
-
-
-
-
-        
+        Debug.Log("Server Started !!");
     }
 
-    
-    public void OnClick_Client()
+   
+
+    // ----------------------------
+    // HOST CLIENT CONNECTED
+    // ----------------------------
+    private void OnLocalClientState(ClientConnectionStateArgs args)
     {
-        Debug.Log(" OnclickClient");
-        if (_networkManager == null)
-            return;
-        Debug.Log(" OnclickClient1");
-        if (_clientState != LocalConnectionState.Stopped)
-            _networkManager.ClientManager.StopConnection();
-        else
-        { 
-            _networkManager.ClientManager.StartConnection();
-           
-        }
-            
+        if (!networkManager.IsServerStarted)
+            return; // Only spawn host on server mode
 
-        
+        if (args.ConnectionState == LocalConnectionState.Started)
+        {
+            Debug.Log("HOST client connected → Spawning host");
+
+            NetworkConnection hostConn = networkManager.ServerManager.Clients[0];
+            SpawnPlayer(hostConn);
+        }
     }
 
-    
+    // ----------------------------
+    // REMOTE CLIENT CONNECTED
+    // ----------------------------
+    private void OnRemoteState(NetworkConnection conn, RemoteConnectionStateArgs args)
+    {
+        if (args.ConnectionState == RemoteConnectionState.Started)
+        {
+            Debug.Log($"Remote client connected: {conn.ClientId}");
+            StartCoroutine(SpawnHostDelayed(conn));
+        }
+    }
+
+    private IEnumerator SpawnHostDelayed(NetworkConnection con)
+    {
+        // Wait a few frames for host connection
+        yield return new WaitForEndOfFrame();
+        yield return new WaitForSeconds(5f);
+
+        if (networkManager.ServerManager.Clients.Count > 0)
+        {
+            SpawnPlayer(con);
+        }
+    }
+
+
+
+    // -----------------------------
+    // PLAYER SPAWNING
+    // -----------------------------
 
     private void SpawnPlayer(NetworkConnection conn)
     {
-        Debug.Log("Spawning the player)");
-       
-        if (Playerprefab == null)
+        if (playerPrefab == null)
         {
-            NetworkManagerExtensions.LogWarning($"Player prefab is empty and cannot be spawned for connection {conn.ClientId}.");
+            Debug.LogError("Player Prefab Missing!");
             return;
         }
-        Transform tran = spawnPoint[UnityEngine.Random.Range(0, spawnPoint.Length)];
-        
-        
+        Debug.Log(conn.IsHost);
+        //Transform point = spawnPoints[conn.IsHost ? 0:1];
+        Transform point = spawnPoints[conn.ClientId == 0? 0:1];
 
-        //NetworkObject nob = _networkManager.GetPooledInstantiated(Playerprefab, tran.position, tran.rotation, true);
-        NetworkObject nob = Instantiate(Playerprefab, tran.position, tran.rotation);
-        _networkManager.ServerManager.Spawn(nob, conn);
+        NetworkObject player = Instantiate(playerPrefab, point.position, point.rotation);
+        var script = player.GetComponent<SynchMaterialColor>();
+        if (script != null)
+        {
+            //if(conn.IsHost)
+            if(conn.ClientId == 0)
+            {
+                player.name = "Instructor";
+                script.color.Value = Color.red;
+            }
+            else
+            {
+                player.name = "client";
+                script.color.Value = Color.blue;
 
-       
+            }
+        }
+        networkManager.ServerManager.Spawn(player, conn);
+
+        Debug.Log($"Spawned player for ClientId {conn.ClientId}");
     }
-
-    
-
-
 }

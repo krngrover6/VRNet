@@ -8,7 +8,7 @@ using UnityEngine.UI;
 public class SignInHandler : MonoBehaviour
 {
     public static SignInHandler Instance;
-
+    [System.Serializable]
     public enum PlayerType
     {
         None,

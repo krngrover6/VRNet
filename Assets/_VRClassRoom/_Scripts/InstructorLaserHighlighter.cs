@@ -110,15 +110,15 @@ public class InstructorLaserHighlighter : MonoBehaviour
         lineRenderer.endColor   = c;
 
         // Highlight on trigger press
-        if (triggerPressedThisFrame && hitCube)
-        {
-            Debug.Log("[Laser] Trigger pressed on HighlightableCube", this);
+        //if (triggerPressedThisFrame && hitCube)
+        //{
+        //    Debug.Log("[Laser] Trigger pressed on HighlightableCube", this);
 
-            if (_current != null)
-                _current.SetHighlighted(false);
+        //    if (_current != null)
+        //        _current.SetHighlighted(false);
 
-            _current = hitHighlightable;
-            _current.SetHighlighted(true);   // HighlightableCube is where networking happens
-        }
+        //    _current = hitHighlightable;
+        //    _current.SetHighlighted(true);   // HighlightableCube is where networking happens
+        //}
     }
 }

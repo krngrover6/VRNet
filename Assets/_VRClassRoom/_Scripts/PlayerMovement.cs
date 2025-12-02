@@ -2,65 +2,26 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 
+[RequireComponent(typeof(CharacterController))]
 public class PlayerMovement : NetworkBehaviour
 {
-   
-
-    public Renderer cubeRenderer;
     [Header("Movement")]
     public float moveSpeed = 5f;
 
-    [Header("View (assign in Inspector)")]
-    [SerializeField] private PlayerInput playerInput;    // PlayerInput on Player
+    [Header("Input")]
+    [SerializeField] private PlayerInput playerInput;
 
     private Vector2 moveInput;
+    private CharacterController controller;
 
-   
-
-    //new
-    private void Start()
+    private void Awake()
     {
-        if (SignInHandler.Instance.selectedPlayer == SignInHandler.PlayerType.Trainee)
-        {
-            ChangeColorServerRpc(Color.blue);
-            Debug.Log("Color change to blue");
-        }
-
-
-        else
-        {
-            ChangeColorServerRpc(Color.red);
-            Debug.Log("Color change to red");
-        }
+        controller = GetComponent<CharacterController>();
     }
 
-    
-
-    [ServerRpc]
-    public void ChangeColorServerRpc(Color newColor)
-    {
-        // Server sends to all clients
-        UpdateColorObserversRpc(newColor);
-        Debug.Log("1");
-    }
-
-    // Server → All Clients
-    [ObserversRpc]
-    void UpdateColorObserversRpc(Color newColor)
-    {
-        cubeRenderer.material.color = newColor;
-        Debug.Log("2");
-    }
-
-
-    
-
-    
-
-    // Called by PlayerInput -> "Move" action (Send Messages)
+    // Called by PlayerInput -> "Move"
     public void OnMove(InputValue value)
     {
-        // Only the local trainee should drive movement
         if (!IsOwner)
             return;
 
@@ -69,14 +30,19 @@ public class PlayerMovement : NetworkBehaviour
 
     private void Update()
     {
-        // Only the local trainee moves this object
         if (!IsOwner)
             return;
 
-        Vector3 dir = new Vector3(moveInput.x, 0f, moveInput.y);
-        if (dir.sqrMagnitude > 1f)
-            dir.Normalize();
+        if (controller == null || !controller.enabled)
+            return;
 
-        transform.position += dir * moveSpeed * Time.deltaTime;
+        // Convert input to world-space movement
+        Vector3 moveDir = new Vector3(moveInput.x, 0, moveInput.y);
+
+        if (moveDir.sqrMagnitude > 1f)
+            moveDir.Normalize();
+
+        // Apply movement through CharacterController
+        controller.Move(moveDir * moveSpeed * Time.deltaTime);
     }
 }

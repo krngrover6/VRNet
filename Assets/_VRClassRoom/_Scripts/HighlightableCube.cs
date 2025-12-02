@@ -1,61 +1,58 @@
-using FishNet.Object;
+﻿using FishNet.Object;
 using FishNet.Object.Synchronizing;
 using UnityEngine;
 
 public class HighlightableCube : NetworkBehaviour
 {
-    [Header("Materials")]
-    [SerializeField] private Material normalMaterial;
-    [SerializeField] private Material highlightedMaterial;
-
-    private Renderer _renderer;
-
-    // This bool only lives on the server; we push changes via RPC.
-    private bool _isHighlighted;
+    public readonly SyncVar<Color> color = new SyncVar<Color>();
+    [SerializeField] private MeshRenderer meshRenderer;
 
     private void Awake()
     {
-        _renderer = GetComponent<Renderer>();
+        color.OnChange += OnColorChanged;
     }
 
-    public override void OnStartClient()
+    private void OnDestroy()
     {
-        base.OnStartClient();
-        // When a client joins late, make sure it sees the correct state.
-        ApplyMaterial(_isHighlighted);
+        color.OnChange -= OnColorChanged;
+
     }
 
-    [Server]  // Only the server is allowed to change highlight state
-    public void SetHighlighted(bool highlighted)
+    private void OnColorChanged(Color previous, Color next, bool asServer)
     {
-        if (_isHighlighted == highlighted)
-            return;
-
-        _isHighlighted = highlighted;
-
-        // Update visuals on the server
-        ApplyMaterial(highlighted);
-
-        // Tell all observers (all clients) to update visuals too
-        RpcSetHighlighted(highlighted);
+        Debug.Log("On Color  Change ");
+        meshRenderer.material.color = next;
     }
 
-    [ObserversRpc(BufferLast = true)]
-    private void RpcSetHighlighted(bool highlighted)
+    // XR → calls this when ray selects
+    public void OnSelect()
     {
-        // Server already updated its renderer; ignore there
-        if (IsServer)
-            return;
+        Debug.Log("hOVER 1");
+        if (SignInHandler.Instance.selectedPlayer == SignInHandler.PlayerType.Instructor)
+        {
+            Debug.Log("hOVER 2");
 
-        _isHighlighted = highlighted;
-        ApplyMaterial(highlighted);
+            CmdChangeColor(Color.red);
+        }
     }
 
-    private void ApplyMaterial(bool highlighted)
+    // XR → calls this when ray deselects
+    public void OnDeSelect()
     {
-        if (_renderer == null)
-            return;
+        Debug.Log("Un hOVER 1");
+        if (SignInHandler.Instance.selectedPlayer == SignInHandler.PlayerType.Instructor)
+        {
+            Debug.Log("Un hOVER 2");
+            CmdChangeColor(Color.white);
+        }
+    }
 
-        _renderer.material = highlighted ? highlightedMaterial : normalMaterial;
+    // -----------------------------
+    // SERVER SIDE COLOR UPDATE
+    // -----------------------------
+    [ServerRpc(RequireOwnership = false)]
+    private void CmdChangeColor(Color newColor)
+    {
+        color.Value = newColor;
     }
 }
